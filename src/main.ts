@@ -9,6 +9,8 @@ import * as hbsLayouts from 'handlebars-layouts';
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
+  app.setGlobalPrefix('project-tracker');
+
   app.enableCors({
     origin: true,
     credentials: true,
