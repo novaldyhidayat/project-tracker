@@ -1,0 +1,564 @@
+{{!< layouts/main}}
+
+<div class="animate-fade-in">
+  <div class="mb-6 flex items-center justify-between">
+    <div>
+      <h2 class="text-2xl font-bold text-gray-800 mb-2">Task Board</h2>
+      <p class="text-gray-600">Manage your tasks across different stages</p>
+    </div>
+    <div class="flex gap-3">
+      <button class="btn btn-secondary" onclick="refreshBoard()">
+        <i class="fas fa-sync-alt"></i>
+        Refresh
+      </button>
+      <button class="btn btn-primary" onclick="createNewTask()">
+        <i class="fas fa-plus"></i>
+        New Task
+      </button>
+    </div>
+  </div>
+
+  <div class="kanban-board">
+    {{#each statuses}}
+    <div class="kanban-column" id="{{this.key}}">
+      <div class="kanban-column-header">
+        <div class="column-title">
+          <i class="fas fa-columns text-primary"></i>
+          <span>{{this.label}}</span>
+        </div>
+        <div class="column-badge" id="count-{{this.key}}">0</div>
+      </div>
+
+      <div class="tasks" data-status="{{this.key}}">
+      </div>
+      <button class="add-task-btn" onclick="addTaskToColumn('{{this.key}}')" title="Add new task">
+        <i class="fas fa-plus"></i>
+      </button>
+    </div>
+    {{/each}}
+  </div>
+</div>
+
+<div id="taskModal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 flex items-center justify-center p-4">
+  <div class="bg-white rounded-xl shadow-xl max-w-md w-full max-h-[90vh] overflow-hidden">
+    <div class="p-6">
+      <div class="flex items-center justify-between mb-6">
+        <h3 class="text-lg font-semibold text-gray-800" id="modalTitle">Create New Task</h3>
+        <button onclick="closeTaskModal()" class="text-gray-400 hover:text-gray-600">
+          <i class="fas fa-times text-xl"></i>
+        </button>
+      </div>
+
+      <form id="taskForm" class="space-y-4">
+        <div>
+          <label class="form-label">Task Title</label>
+          <input type="text" id="taskTitle" class="form-control" placeholder="Enter task title" required>
+        </div>
+
+        <div>
+          <label class="form-label">Description</label>
+          <textarea id="taskDescription" class="form-control" rows="3" placeholder="Enter task description"></textarea>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="form-label">Priority</label>
+            <select id="taskPriority" class="form-control">
+              <option value="low">Low</option>
+              <option value="medium" selected>Medium</option>
+              <option value="high">High</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="form-label">Assignee</label>
+            <select id="taskAssignee" class="form-control">
+              <option value="">Unassigned</option>
+              <option value="john">John Doe</option>
+              <option value="jane">Jane Smith</option>
+              <option value="mike">Mike Brown</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label class="form-label">Due Date</label>
+          <input type="date" id="taskDueDate" class="form-control">
+        </div>
+
+        <div class="flex gap-3 pt-4">
+          <button type="submit" class="btn btn-primary flex-1">
+            <i class="fas fa-save mr-2"></i>
+            Save Task
+          </button>
+          <button type="button" onclick="closeTaskModal()" class="btn btn-secondary">
+            Cancel
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<style>
+  .task-comment {
+    position: relative;
+    background: var(--surface);
+    border-radius: var(--radius-lg);
+    padding: var(--space-3);
+    box-shadow: var(--shadow-sm);
+    border: 1px solid var(--gray-200);
+    margin-bottom: var(--space-2);
+    transition: all 0.3s ease;
+    max-width: 280px;
+    animation: slideInUp 0.4s ease-out;
+  }
+
+  .task-comment::before {
+    content: '';
+    position: absolute;
+    bottom: -6px;
+    left: 15px;
+    width: 0;
+    height: 0;
+    border-left: 6px solid transparent;
+    border-right: 6px solid transparent;
+    border-top: 6px solid var(--surface);
+  }
+
+  .task-comment::after {
+    content: '';
+    position: absolute;
+    bottom: -5px;
+    left: 15px;
+    width: 0;
+    height: 0;
+    border-left: 6px solid transparent;
+    border-right: 6px solid transparent;
+    border-top: 6px solid var(--gray-200);
+    z-index: -1;
+  }
+
+  .task-comment:hover {
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-md);
+  }
+
+  .comment-author {
+    font-weight: 600;
+    color: var(--primary);
+    font-size: var(--text-sm);
+    margin-bottom: var(--space-1);
+  }
+
+  .comment-text {
+    color: var(--gray-700);
+    font-size: var(--text-sm);
+    line-height: 1.4;
+  }
+
+  .comment-time {
+    color: var(--gray-500);
+    font-size: var(--text-xs);
+    margin-top: var(--space-1);
+  }
+
+  .task-card.dragging {
+    transform: rotate(3deg) scale(1.02);
+    z-index: 1000;
+  }
+
+  .kanban-column.drag-over {
+    background: rgba(109, 148, 197, 0.05);
+    transform: scale(1.01);
+  }
+
+  .task-skeleton {
+    background: linear-gradient(90deg, var(--gray-200) 25%, var(--gray-100) 50%, var(--gray-200) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+    border-radius: var(--radius);
+    height: 120px;
+    margin-bottom: var(--space-3);
+  }
+
+  .status-todo { border-left: 4px solid #f59e0b; }
+  .status-in-progress { border-left: 4px solid #3b82f6; }
+  .status-review { border-left: 4px solid #ec4899; }
+  .status-done { border-left: 4px solid #10b981; }
+</style>
+
+<script>
+const sampleTasks = [
+  {
+    id: 1,
+    title: "Design user interface mockups",
+    description: "Create high-fidelity mockups for the new dashboard design",
+    priority: "high",
+    status: "todo",
+    assignee: "john",
+    dueDate: "2025-09-28",
+    createdAt: "2025-09-25T08:00:00Z"
+  },
+  {
+    id: 2,
+    title: "Implement authentication system",
+    description: "Set up JWT authentication with refresh tokens",
+    priority: "high",
+    status: "in-progress",
+    assignee: "jane",
+    dueDate: "2025-09-30",
+    createdAt: "2025-09-24T14:30:00Z"
+  },
+  {
+    id: 3,
+    title: "Write API documentation",
+    description: "Document all REST API endpoints with examples",
+    priority: "medium",
+    status: "review",
+    assignee: "mike",
+    dueDate: "2025-10-02",
+    createdAt: "2025-09-23T10:15:00Z"
+  },
+  {
+    id: 4,
+    title: "Setup database migrations",
+    description: "Configure automated database schema migrations",
+    priority: "low",
+    status: "done",
+    assignee: "john",
+    dueDate: "2025-09-26",
+    createdAt: "2025-09-22T16:45:00Z"
+  },
+  {
+    id: 5,
+    title: "Optimize frontend performance",
+    description: "Implement lazy loading and code splitting",
+    priority: "medium",
+    status: "todo",
+    assignee: "jane",
+    dueDate: "2025-10-05",
+    createdAt: "2025-09-25T09:20:00Z"
+  }
+];
+
+const assignees = {
+  john: { name: "John Doe", avatar: "JD", color: "blue" },
+  jane: { name: "Jane Smith", avatar: "JS", color: "green" },
+  mike: { name: "Mike Brown", avatar: "MB", color: "purple" }
+};
+
+document.addEventListener('DOMContentLoaded', function() {
+  initializeBoard();
+  setupDragAndDrop();
+});
+function initializeBoard() {
+  document.querySelectorAll('.tasks').forEach(container => {
+    container.innerHTML = '';
+  });
+  sampleTasks.forEach(task => {
+    addTaskToBoard(task);
+  });
+
+  updateColumnCounts();
+}
+
+function addTaskToBoard(task) {
+  const column = document.querySelector(`[data-status="${task.status}"]`);
+  if (!column) return;
+
+  const taskElement = createTaskElement(task);
+  column.appendChild(taskElement);
+
+  gsap.from(taskElement, {
+    y: 20,
+    opacity: 0,
+    duration: 0.4,
+    ease: 'power2.out'
+  });
+}
+
+function createTaskElement(task) {
+  const assignee = assignees[task.assignee];
+  const dueDate = new Date(task.dueDate);
+  const now = new Date();
+  const daysDiff = Math.ceil((dueDate - now) / (1000 * 60 * 60 * 24));
+
+  let dueDateClass = '';
+  let dueDateIcon = 'calendar';
+
+  if (daysDiff < 0) {
+    dueDateClass = 'overdue';
+    dueDateIcon = 'exclamation-triangle';
+  } else if (daysDiff <= 2) {
+    dueDateClass = 'due-soon';
+    dueDateIcon = 'clock';
+  }
+
+  const taskElement = document.createElement('div');
+  taskElement.className = `task-card status-${task.status}`;
+  taskElement.draggable = true;
+  taskElement.dataset.taskId = task.id;
+
+  taskElement.innerHTML = `
+    <div class="task-header">
+      <h3 class="task-title">${task.title}</h3>
+      <span class="task-priority ${task.priority}">${task.priority}</span>
+    </div>
+
+    ${task.description ? `<p class="task-description">${task.description}</p>` : ''}
+
+    <div class="task-meta">
+      <div class="task-assignee">
+        ${assignee ? `
+          <div class="assignee-avatar bg-${assignee.color}-100 text-${assignee.color}-600">
+            ${assignee.avatar}
+          </div>
+          <span class="text-xs font-medium">${assignee.name}</span>
+        ` : '<span class="text-xs text-gray-500">Unassigned</span>'}
+      </div>
+
+      <div class="task-due-date ${dueDateClass}">
+        <i class="fas fa-${dueDateIcon}"></i>
+        <span>${dueDate.toLocaleDateString()}</span>
+      </div>
+    </div>
+  `;
+
+  taskElement.addEventListener('dragstart', handleDragStart);
+  taskElement.addEventListener('click', () => editTask(task));
+
+  return taskElement;
+}
+
+function updateColumnCounts() {
+  const statuses = ['todo', 'in-progress', 'review', 'done'];
+  statuses.forEach(status => {
+    const count = sampleTasks.filter(task => task.status === status).length;
+    const badge = document.getElementById(`count-${status}`);
+    if (badge) {
+      badge.textContent = count;
+    }
+  });
+}
+
+function setupDragAndDrop() {
+  const tasks = document.querySelectorAll('.task-card');
+  const columns = document.querySelectorAll('.kanban-column');
+
+  tasks.forEach(task => {
+    task.addEventListener('dragstart', handleDragStart);
+    task.addEventListener('dragend', handleDragEnd);
+  });
+
+  columns.forEach(column => {
+    column.addEventListener('dragover', handleDragOver);
+    column.addEventListener('drop', handleDrop);
+    column.addEventListener('dragenter', handleDragEnter);
+    column.addEventListener('dragleave', handleDragLeave);
+  });
+}
+
+let draggedTask = null;
+
+function handleDragStart(e) {
+  draggedTask = e.target;
+  draggedTask.classList.add('dragging');
+
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/html', e.target.outerHTML);
+}
+
+function handleDragEnd(e) {
+  draggedTask.classList.remove('dragging');
+  draggedTask = null;
+
+    document.querySelectorAll('.kanban-column').forEach(col => {
+    col.classList.remove('drag-over');
+  });
+}
+
+function handleDragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+}
+
+function handleDragEnter(e) {
+  e.preventDefault();
+  if (e.target.classList.contains('kanban-column')) {
+    e.target.classList.add('drag-over');
+  }
+}
+
+function handleDragLeave(e) {
+  if (e.target.classList.contains('kanban-column')) {
+    e.target.classList.remove('drag-over');
+  }
+}
+
+function handleDrop(e) {
+  e.preventDefault();
+
+  if (e.target.classList.contains('kanban-column') || e.target.closest('.kanban-column')) {
+    const column = e.target.classList.contains('kanban-column')
+      ? e.target
+      : e.target.closest('.kanban-column');
+
+    const newStatus = column.id;
+
+    if (draggedTask && draggedTask.dataset.taskId) {
+      const taskId = parseInt(draggedTask.dataset.taskId);
+      const task = sampleTasks.find(t => t.id === taskId);
+
+      if (task && task.status !== newStatus) {
+        task.status = newStatus;
+
+        const tasksContainer = column.querySelector('.tasks');
+        if (tasksContainer && draggedTask.parentNode) {
+          draggedTask.parentNode.removeChild(draggedTask);
+          tasksContainer.appendChild(draggedTask);
+
+          gsap.from(draggedTask, {
+            scale: 0.95,
+            duration: 0.3,
+            ease: 'back.out(1.7)'
+          });
+        }
+
+        updateColumnCounts();
+
+        showToast('Task moved successfully!', 'success');
+      }
+    }
+  }
+}
+
+function createNewTask() {
+  document.getElementById('modalTitle').textContent = 'Create New Task';
+  document.getElementById('taskForm').reset();
+  document.getElementById('taskModal').classList.remove('hidden');
+  document.getElementById('taskModal').classList.add('flex');
+
+  gsap.from('#taskModal > div', {
+    scale: 0.9,
+    opacity: 0,
+    duration: 0.3,
+    ease: 'power2.out'
+  });
+}
+
+function editTask(task) {
+  document.getElementById('modalTitle').textContent = 'Edit Task';
+  document.getElementById('taskTitle').value = task.title;
+  document.getElementById('taskDescription').value = task.description;
+  document.getElementById('taskPriority').value = task.priority;
+  document.getElementById('taskAssignee').value = task.assignee;
+  document.getElementById('taskDueDate').value = task.dueDate;
+
+  document.getElementById('taskModal').classList.remove('hidden');
+  document.getElementById('taskModal').classList.add('flex');
+
+  gsap.from('#taskModal > div', {
+    scale: 0.9,
+    opacity: 0,
+    duration: 0.3,
+    ease: 'power2.out'
+  });
+}
+
+function closeTaskModal() {
+  gsap.to('#taskModal > div', {
+    scale: 0.9,
+    opacity: 0,
+    duration: 0.2,
+    ease: 'power2.in',
+    onComplete: () => {
+      document.getElementById('taskModal').classList.add('hidden');
+      document.getElementById('taskModal').classList.remove('flex');
+    }
+  });
+}
+
+function addTaskToColumn(status) {
+  const newTask = {
+    id: Date.now(),
+    title: `New Task ${Date.now()}`,
+    description: "Task description",
+    priority: "medium",
+    status: status,
+    assignee: "",
+    dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    createdAt: new Date().toISOString()
+  };
+
+  sampleTasks.push(newTask);
+  addTaskToBoard(newTask);
+  updateColumnCounts();
+}
+
+document.getElementById('taskForm').addEventListener('submit', function(e) {
+  e.preventDefault();
+
+  const formData = new FormData(e.target);
+  const taskData = {
+    title: formData.get('taskTitle'),
+    description: formData.get('taskDescription'),
+    priority: formData.get('taskPriority'),
+    assignee: formData.get('taskAssignee'),
+    dueDate: formData.get('taskDueDate')
+  };
+
+  console.log('Task data:', taskData);
+
+  closeTaskModal();
+
+  showToast('Task saved successfully!', 'success');
+});
+
+function refreshBoard() {
+  const button = event.target.closest('button');
+  const icon = button.querySelector('i');
+  icon.classList.add('fa-spin');
+
+  setTimeout(() => {
+    icon.classList.remove('fa-spin');
+    initializeBoard();
+    showToast('Board refreshed!', 'info');
+  }, 1000);
+}
+
+function showToast(message, type = 'info') {
+  const toast = document.createElement('div');
+  toast.className = `fixed top-4 right-4 px-6 py-3 rounded-lg shadow-lg z-50 transform translate-x-full transition-all duration-300`;
+  toast.innerHTML = `
+    <div class="flex items-center gap-3">
+      <i class="fas fa-${type === 'success' ? 'check-circle text-green-500' : type === 'error' ? 'exclamation-circle text-red-500' : 'info-circle text-blue-500'}"></i>
+      <span class="text-white font-medium">${message}</span>
+    </div>
+  `;
+
+  if (type === 'success') {
+    toast.style.background = 'linear-gradient(135deg, #10b981, #059669)';
+  } else if (type === 'error') {
+    toast.style.background = 'linear-gradient(135deg, #ef4444, #dc2626)';
+  } else {
+    toast.style.background = 'linear-gradient(135deg, #3b82f6, #2563eb)';
+  }
+
+  document.body.appendChild(toast);
+
+  setTimeout(() => {
+    toast.style.transform = 'translateX(0)';
+  }, 100);
+  setTimeout(() => {
+    toast.style.transform = 'translateX(100%)';
+    setTimeout(() => {
+      document.body.removeChild(toast);
+    }, 300);
+  }, 3000);
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  setupDragAndDrop();
+});
+</script>

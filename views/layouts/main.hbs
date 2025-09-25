@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{title}} - TaskFlow</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="/css/styles.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+
+  <style>
+    .task-status-todo { background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); }
+    .task-status-in-progress { background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%); }
+    .task-status-done { background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%); }
+
+    .status-indicator {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      display: inline-block;
+      margin-right: 8px;
+    }
+
+    .status-todo .status-indicator { background: #f59e0b; }
+    .status-in-progress .status-indicator { background: #3b82f6; }
+    .status-done .status-indicator { background: #10b981; }
+
+    .chat-balloon {
+      position: relative;
+      background: var(--surface);
+      border-radius: var(--radius-lg);
+      padding: var(--space-4);
+      box-shadow: var(--shadow);
+      border: 1px solid var(--gray-200);
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      max-width: 320px;
+      animation: slideInUp 0.4s ease-out;
+    }
+
+    .chat-balloon::before {
+      content: '';
+      position: absolute;
+      bottom: -8px;
+      left: 20px;
+      width: 0;
+      height: 0;
+      border-left: 8px solid transparent;
+      border-right: 8px solid transparent;
+      border-top: 8px solid var(--surface);
+    }
+
+    .chat-balloon::after {
+      content: '';
+      position: absolute;
+      bottom: -7px;
+      left: 20px;
+      width: 0;
+      height: 0;
+      border-left: 8px solid transparent;
+      border-right: 8px solid transparent;
+      border-top: 8px solid var(--gray-200);
+      z-index: -1;
+    }
+
+    .chat-balloon:hover {
+      transform: translateY(-2px) scale(1.02);
+      box-shadow: var(--shadow-lg);
+    }
+
+    @keyframes slideInUp {
+      from {
+        opacity: 0;
+        transform: translateY(20px) scale(0.95);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+
+    .task-card {
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      cursor: grab;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .task-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: linear-gradient(135deg, rgba(109, 148, 197, 0.05) 0%, rgba(232, 223, 202, 0.05) 100%);
+      opacity: 0;
+      transition: opacity 0.3s ease;
+      pointer-events: none;
+    }
+
+    .task-card:hover::before {
+      opacity: 1;
+    }
+
+    .task-card.dragging {
+      transform: rotate(5deg);
+      box-shadow: var(--shadow-xl);
+      cursor: grabbing;
+    }
+
+    .kanban-column {
+      animation: fadeInUp 0.6s ease-out forwards;
+      opacity: 0;
+    }
+
+    .kanban-column:nth-child(1) { animation-delay: 0.1s; }
+    .kanban-column:nth-child(2) { animation-delay: 0.2s; }
+    .kanban-column:nth-child(3) { animation-delay: 0.3s; }
+    .kanban-column:nth-child(4) { animation-delay: 0.4s; }
+    .kanban-column:nth-child(5) { animation-delay: 0.5s; }
+
+    @keyframes fadeInUp {
+      from {
+        opacity: 0;
+        transform: translateY(30px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .loading-shimmer {
+      background: linear-gradient(90deg, var(--gray-200) 25%, var(--gray-100) 50%, var(--gray-200) 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.5s infinite;
+    }
+
+    @keyframes shimmer {
+      0% { background-position: -200% 0; }
+      100% { background-position: 200% 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-layout">
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <div class="brand">
+          <div class="brand-icon">
+            <i class="fas fa-tasks"></i>
+          </div>
+          <span class="nav-text">TaskFlow</span>
+        </div>
+      </div>
+
+      <nav class="sidebar-nav">
+        <div class="nav-item">
+          <a href="/dashboard" class="nav-link {{#if (eq active 'dashboard')}}active{{/if}}">
+            <i class="fas fa-tachometer-alt nav-icon"></i>
+            <span class="nav-text">Dashboard</span>
+          </a>
+        </div>
+
+        <div class="nav-item">
+          <a href="/board" class="nav-link {{#if (eq active 'board')}}active{{/if}}">
+            <i class="fas fa-columns nav-icon"></i>
+            <span class="nav-text">Task Board</span>
+          </a>
+        </div>
+
+        {{#if (or (eq user.role 'SUPERADMIN') (eq user.role 'OWNER') (eq user.role 'PROJECT_MANAGER'))}}
+        <div class="nav-item">
+          <a href="/projects" class="nav-link {{#if (eq active 'projects')}}active{{/if}}">
+            <i class="fas fa-project-diagram nav-icon"></i>
+            <span class="nav-text">Projects</span>
+          </a>
+        </div>
+        {{/if}}
+
+        {{#if (or (eq user.role 'SUPERADMIN') (eq user.role 'OWNER'))}}
+        <div class="nav-item">
+          <a href="/users" class="nav-link {{#if (eq active 'users')}}active{{/if}}">
+            <i class="fas fa-users nav-icon"></i>
+            <span class="nav-text">Users</span>
+          </a>
+        </div>
+        {{/if}}
+
+        {{#if (eq user.role 'SUPERADMIN')}}
+        <div class="nav-item">
+          <a href="/company" class="nav-link {{#if (eq active 'company')}}active{{/if}}">
+            <i class="fas fa-building nav-icon"></i>
+            <span class="nav-text">Company</span>
+          </a>
+        </div>
+        {{/if}}
+      </nav>
+
+      <div class="sidebar-header" style="margin-top: auto; border-top: 1px solid rgba(255,255,255,0.1);">
+        <div class="user-trigger" onclick="toggleUserMenu()">
+          <div class="user-avatar">
+            {{userInitials user.name}}
+          </div>
+          <div class="user-info">
+            <div class="user-name">{{user.name}}</div>
+            <div class="user-role">{{roleLabel user.role}}</div>
+          </div>
+          <i class="fas fa-chevron-down" style="font-size: 12px; color: rgba(255,255,255,0.7);"></i>
+        </div>
+
+        <div id="userMenu" class="user-menu-dropdown">
+          <a href="/profile" class="user-menu-item">
+            <i class="fas fa-user"></i>
+            Your Profile
+          </a>
+          <a href="/settings" class="user-menu-item">
+            <i class="fas fa-cog"></i>
+            Settings
+          </a>
+          <div class="user-menu-divider"></div>
+          <a href="/auth/logout" class="user-menu-item">
+            <i class="fas fa-sign-out-alt"></i>
+            Sign out
+          </a>
+        </div>
+      </div>
+    </aside>
+
+    <div class="main-content">
+      <header class="topbar">
+        <div class="topbar-left">
+          <button class="menu-toggle" onclick="toggleSidebar()" id="menuToggle">
+            <i class="fas fa-bars"></i>
+          </button>
+          <h1 class="page-title">{{title}}</h1>
+        </div>
+
+        <div class="topbar-right">
+          <button class="btn btn-ghost btn-sm" onclick="toggleNotifications()">
+            <i class="fas fa-bell"></i>
+            <span class="notification-badge" id="notificationBadge" style="display: none;">3</span>
+          </button>
+          <div class="search-container">
+            <input type="text" placeholder="Search tasks..." class="search-input" id="globalSearch">
+            <i class="fas fa-search search-icon"></i>
+          </div>
+        </div>
+      </header>
+
+      <main class="content-area">
+        {{{body}}}
+      </main>
+    </div>
+  </div>
+
+  <style>
+    .user-menu-dropdown {
+      position: absolute;
+      bottom: 100%;
+      left: 0;
+      right: 0;
+      background: var(--surface);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-xl);
+      border: 1px solid var(--gray-200);
+      opacity: 0;
+      visibility: hidden;
+      transform: translateY(10px);
+      transition: all 0.2s ease;
+      margin-bottom: var(--space-2);
+      overflow: hidden;
+    }
+
+    .user-menu-dropdown.active {
+      opacity: 1;
+      visibility: visible;
+      transform: translateY(0);
+    }
+
+    .user-menu-item {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      padding: var(--space-3) var(--space-4);
+      color: var(--gray-700);
+      text-decoration: none;
+      transition: all 0.2s ease;
+      font-size: var(--text-sm);
+    }
+
+    .user-menu-item:hover {
+      background: var(--gray-50);
+      color: var(--primary);
+    }
+
+    .user-menu-item i {
+      width: 16px;
+      text-align: center;
+    }
+
+    .user-menu-divider {
+      height: 1px;
+      background: var(--gray-200);
+      margin: var(--space-2) 0;
+    }
+
+    .notification-badge {
+      position: absolute;
+      top: -8px;
+      right: -8px;
+      background: var(--danger);
+      color: white;
+      border-radius: 50%;
+      width: 20px;
+      height: 20px;
+      font-size: var(--text-xs);
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .search-container {
+      position: relative;
+      margin-left: var(--space-4);
+    }
+
+    .search-input {
+      width: 280px;
+      padding: var(--space-2) var(--space-3) var(--space-2) var(--space-8);
+      border: 1px solid var(--gray-300);
+      border-radius: var(--radius-lg);
+      background: var(--surface);
+      font-size: var(--text-sm);
+      transition: all 0.2s ease;
+    }
+
+    .search-input:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px var(--primary-100);
+      width: 320px;
+    }
+
+    .search-icon {
+      position: absolute;
+      left: var(--space-3);
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--gray-400);
+      font-size: var(--text-sm);
+    }
+
+    @media (max-width: 768px) {
+      .search-container {
+        display: none;
+      }
+
+      .user-menu-dropdown {
+        position: fixed;
+        bottom: 72px;
+        left: var(--space-4);
+        right: var(--space-4);
+        width: auto;
+      }
+    }
+  </style>
+
+  <script>
+    function toggleSidebar() {
+      const sidebar = document.getElementById('sidebar');
+      const menuToggle = document.getElementById('menuToggle');
+      const isMobile = window.innerWidth <= 768;
+
+      if (isMobile) {
+        sidebar.classList.toggle('open');
+      } else {
+        sidebar.classList.toggle('collapsed');
+      }
+
+      const icon = menuToggle.querySelector('i');
+      if (sidebar.classList.contains('collapsed') || sidebar.classList.contains('open')) {
+        icon.className = 'fas fa-times';
+      } else {
+        icon.className = 'fas fa-bars';
+      }
+    }
+
+    function toggleUserMenu() {
+      const menu = document.getElementById('userMenu');
+      menu.classList.toggle('active');
+    }
+
+    document.addEventListener('click', function(event) {
+      const userTrigger = event.target.closest('.user-trigger');
+      const userMenu = document.getElementById('userMenu');
+
+      if (!userTrigger && userMenu.classList.contains('active')) {
+        userMenu.classList.remove('active');
+      }
+    });
+
+    function toggleNotifications() {
+      console.log('Notifications toggled');
+    }
+    const searchInput = document.getElementById('globalSearch');
+    if (searchInput) {
+      searchInput.addEventListener('input', function(e) {
+        const query = e.target.value.toLowerCase();
+        console.log('Searching for:', query);
+      });
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+      gsap.from('.nav-link', {
+        x: -20,
+        opacity: 0,
+        duration: 0.3,
+        stagger: 0.1,
+        delay: 0.2
+      });
+
+      gsap.from('.topbar', {
+        y: -20,
+        opacity: 0,
+        duration: 0.4,
+        ease: 'power2.out'
+      });
+
+      gsap.from('.content-area', {
+        y: 20,
+        opacity: 0,
+        duration: 0.4,
+        delay: 0.1,
+        ease: 'power2.out'
+      });
+    });
+
+    function logout() {
+      if (confirm('Are you sure you want to sign out?')) {
+        window.location.href = '/auth/logout';
+      }
+    }
+
+    window.addEventListener('resize', function() {
+      const sidebar = document.getElementById('sidebar');
+      const isMobile = window.innerWidth <= 768;
+
+      if (!isMobile && sidebar.classList.contains('open')) {
+        sidebar.classList.remove('open');
+      }
+    });
+  </script>
+</body>
+</html>

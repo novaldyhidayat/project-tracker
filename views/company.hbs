@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Company Management - Task Management</title>
+  <link rel="stylesheet" href="/css/styles.css">
+  <link rel="stylesheet" href="/css/board.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+</head>
+<body>
+  <div class="dashboard-container">
+    <header class="dashboard-header">
+      <h1>Company Management</h1>
+      <button onclick="logout()" class="logout-btn">Logout</button>
+    </header>
+    <main class="dashboard-content">
+      <p>Welcome, Superadmin! This is the company management page.</p>
+    </main>
+  </div>
+
+  <script src="/js/board.js"></script>
+  <script>
+    gsap.from('.dashboard-header', { opacity: 0, y: -50, duration: 0.5 });
+    gsap.from('.dashboard-content', { opacity: 0, y: 50, duration: 0.5, delay: 0.2 });
+  </script>
+</body>
+</html>
